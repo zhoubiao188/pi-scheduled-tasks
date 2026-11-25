@@ -209,6 +209,8 @@ npm run typecheck
 `test/extension.test.mjs` 用假的 pi API 和假对话框直接驱动真实命令处理函数；
 `test/runner.test.mjs` 用一个会讲 JSON 事件协议的假 `pi` 验证执行路径。
 
+发布走 npm Trusted Publishing，见 [RELEASING.md](./RELEASING.md)。
+
 ## 许可
 
 MIT。与 pi、Pi Web 维护者无隶属关系。

@@ -237,6 +237,8 @@ npm run typecheck
 and fake dialogs; `test/runner.test.mjs` runs a stand-in `pi` that speaks the
 JSON event protocol.
 
+Releases go through npm Trusted Publishing; see [RELEASING.md](./RELEASING.md).
+
 ## License
 
 MIT. Not affiliated with the pi or Pi Web maintainers.
