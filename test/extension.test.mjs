@@ -65,6 +65,20 @@ const fakePi = {
 
 scheduledTasks(fakePi);
 
+test("every session gets its own extension instance", () => {
+  // Pi Web calls the factory once per session in the same process. A second
+  // call must still register the commands (a process-wide guard broke this).
+  const second = new Map();
+  scheduledTasks({
+    on: () => {},
+    registerCommand: (name, options) => second.set(name, options),
+    registerTool: () => {},
+    sendUserMessage: () => {},
+  });
+  assert.ok(second.has("tasks"));
+  assert.ok(second.has("at"));
+});
+
 const storeFile = path.join(dir, "scheduled-tasks.json");
 
 function readStore() {

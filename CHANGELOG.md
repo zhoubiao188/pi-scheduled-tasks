@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.4
+
+- fix: Pi Web runs every session in one process, so a process-wide "already
+  loaded" flag left every session after the first without `/tasks`. Each
+  session now gets its own instance; the leader lock and per-occurrence claims
+  still keep one run per task.
+
 ## 0.2.3
 
 - a fresh install is visible: with no tasks the status entry reads

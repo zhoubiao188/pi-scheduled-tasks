@@ -1,6 +1,6 @@
 {
   "name": "@zhoubiao188/pi-scheduled-tasks",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Scheduled tasks for pi and Pi Web: cron, intervals and one-off prompts, each run in its own session.",
   "type": "module",
   "license": "MIT",

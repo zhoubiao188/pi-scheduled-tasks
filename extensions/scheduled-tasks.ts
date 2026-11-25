@@ -50,7 +50,6 @@ import {
   type TaskStore,
 } from "../src/store.ts";
 
-const INSTANCE_KEY = Symbol.for("pi-scheduled-tasks/instance");
 const LIVENESS_KEY = Symbol.for("@agegr/pi-web/session-liveness/v1");
 const TICK_MS = 15_000;
 const HEARTBEAT_MS = 10_000;
@@ -117,11 +116,10 @@ const TEMPLATES = [
 ] as const;
 
 export default function scheduledTasks(pi: ExtensionAPI) {
-  const registry = globalThis as Record<PropertyKey, unknown>;
-  // Loaded twice (global and project settings) still means one scheduler.
-  if (registry[INSTANCE_KEY]) return;
-  registry[INSTANCE_KEY] = true;
-  // A task's own headless run must never schedule anything.
+  // Pi Web runs every session in one process, so this factory is called once
+  // per session; a process-wide "already loaded" flag would leave every session
+  // after the first without its commands. Duplicate installs are harmless: the
+  // leader lock and the per-occurrence claims keep only one run per task.
   if (process.env.PI_SCHEDULED_TASK_CHILD === "1") return;
 
   // PI_SCHEDULED_TASKS_DIR keeps tests (and isolated setups) out of ~/.pi/agent.
