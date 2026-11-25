@@ -235,7 +235,7 @@ export function parseSchedule(input: string, now = Date.now()): ParsedSchedule {
   );
 }
 
-function parseCanonical(raw: string, now: number): Schedule {
+function parseCanonical(raw: string): Schedule {
   const cronSpec = parseCron(raw);
   if (cronSpec) return { kind: "cron", expr: raw, spec: cronSpec };
 
@@ -257,7 +257,7 @@ function parseCanonical(raw: string, now: number): Schedule {
  * close to `after`, so a slow run does not push every later run back.
  */
 export function nextRunAt(schedule: Schedule | string, after: number): number | null {
-  const parsed = typeof schedule === "string" ? parseCanonical(schedule, after) : schedule;
+  const parsed = typeof schedule === "string" ? parseCanonical(schedule) : schedule;
   switch (parsed.kind) {
     case "cron":
       return nextCronRun(parsed.spec, after);
@@ -270,14 +270,14 @@ export function nextRunAt(schedule: Schedule | string, after: number): number | 
 
 /** Where the next run lands, for the widget and dialogs. */
 export function describeSchedule(schedule: Schedule | string, now = Date.now()): string {
-  const parsed = typeof schedule === "string" ? parseCanonical(schedule, now) : schedule;
+  const parsed = typeof schedule === "string" ? parseCanonical(schedule) : schedule;
   switch (parsed.kind) {
     case "cron":
       return `cron ${parsed.expr}`;
     case "every":
       return parsed.label;
     case "at":
-      return `once ${formatDateTime(parsed.at)}`;
+      return `once ${formatDateTime(parsed.at, now)}`;
   }
 }
 
