@@ -36,6 +36,10 @@ export interface ScheduledTask {
   /** Canonical schedule string; see src/schedule.ts. */
   schedule: string;
   cwd: string;
+  /** Last moment this task may start, or null for no end date. */
+  until: number | null;
+  /** Optional `--model` pattern for the run. */
+  model: string | null;
   enabled: boolean;
   catchUp: boolean;
   createdAt: number;
@@ -71,7 +75,7 @@ function isRunRecord(value: unknown): value is RunRecord {
 
 function readTask(value: unknown): ScheduledTask | null {
   if (!isRecord(value)) return null;
-  const { id, title, prompt, schedule, cwd, enabled, catchUp, createdAt, updatedAt, nextRunAt, runs, history } = value;
+  const { id, title, prompt, schedule, cwd, until, model, enabled, catchUp, createdAt, updatedAt, nextRunAt, runs, history } = value;
   if (typeof id !== "string" || !id) return null;
   if (typeof title !== "string" || !title.trim()) return null;
   if (typeof prompt !== "string" || !prompt.trim()) return null;
@@ -89,6 +93,8 @@ function readTask(value: unknown): ScheduledTask | null {
     prompt: prompt.slice(0, MAX_PROMPT_LENGTH),
     schedule,
     cwd,
+    until: typeof until === "number" && Number.isFinite(until) ? until : null,
+    model: typeof model === "string" && model.trim() ? model.trim().slice(0, 200) : null,
     enabled: enabled !== false,
     catchUp: catchUp === true,
     createdAt: typeof createdAt === "number" ? createdAt : Date.now(),
@@ -174,6 +180,8 @@ export type TaskInput = {
   schedule: string;
   cwd: string;
   catchUp: boolean;
+  until?: number | null;
+  model?: string | null;
 };
 
 /** Validates user input and returns the fields worth storing. */
@@ -190,8 +198,23 @@ export function validateTaskInput(input: TaskInput, now = Date.now()): Omit<Sche
   if (!cwd) throw new Error("A task needs a working directory.");
   if (cwd.length > 4096) throw new Error("The working directory path is too long.");
 
+  const until = input.until == null ? null : input.until;
+  if (until !== null && (!Number.isFinite(until) || until <= 0)) throw new Error("The end date is not a valid time.");
+
+  const model = input.model?.trim() ?? "";
+  if (model && !/^[\w./:@*!-]+$/.test(model)) throw new Error("The model pattern contains characters pi does not accept.");
+
   const parsed = parseSchedule(input.schedule, now);
-  return { title, prompt, schedule: parsed.canonical, cwd, enabled: true, catchUp: input.catchUp };
+  return {
+    title,
+    prompt,
+    schedule: parsed.canonical,
+    cwd,
+    until,
+    model: model || null,
+    enabled: true,
+    catchUp: input.catchUp,
+  };
 }
 
 /** Inserts or replaces a task and returns it. */

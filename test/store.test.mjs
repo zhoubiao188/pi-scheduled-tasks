@@ -39,6 +39,17 @@ test("validateTaskInput normalises and validates", () => {
   assert.throws(() => validateTaskInput({ ...valid, title: "x".repeat(200) }), /120/);
 });
 
+test("an end date and a model are validated", () => {
+  const until = Date.now() + 86_400_000;
+  const fields = validateTaskInput({ ...valid, until, model: "anthropic/claude-sonnet-4-6" });
+  assert.equal(fields.until, until);
+  assert.equal(fields.model, "anthropic/claude-sonnet-4-6");
+
+  assert.equal(validateTaskInput({ ...valid, until: null, model: null }).model, null);
+  assert.throws(() => validateTaskInput({ ...valid, until: Number.NaN }), /end date/);
+  assert.throws(() => validateTaskInput({ ...valid, model: "bad model; rm -rf /" }), /model/);
+});
+
 test("store round-trips through disk with 0600", () => {
   const dir = tempDir();
   const file = path.join(dir, "scheduled-tasks.json");

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.0
+
+Built against the automation guide WorkBuddy publishes, for the parts a local pi
+client can do.
+
+- the create flow asks for a repeat rule (daily / weekly / monthly / yearly /
+  interval / once / custom cron) instead of raw cron text
+- templates for a daily briefing, a weekly report, an inbox cleanup and a CI check
+- optional end date and optional per-task `--model`
+- `/tasks runs` shows every task's runs on one timeline
+- `scheduled_task` tool: the agent can create and list tasks from a sentence
+- failed tasks are marked in the manager and the widget
+
+## 0.1.0
+
 ## 0.1.0
 
 First release.

@@ -1,6 +1,6 @@
 {
   "name": "@zhoubiao188/pi-scheduled-tasks",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Scheduled tasks for pi and Pi Web: cron, intervals and one-off prompts, each run in its own session.",
   "type": "module",
   "license": "MIT",
@@ -45,11 +45,13 @@
     "node": ">=22.19.0"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*"
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "^0.84.2",
     "@types/node": "^22.10.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "typebox": "^1.0.0"
   }
 }

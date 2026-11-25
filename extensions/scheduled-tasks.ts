@@ -25,7 +25,9 @@ import * as fsp from "node:fs/promises";
 import * as path from "node:path";
 import { getAgentDir, withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
 import { DEFAULT_TIMEOUT_MS, resolvePiCommand, runPiPrompt, type RunOutcome } from "../src/runner.ts";
+import { buildSchedule, REPEAT_KINDS, type RepeatKind } from "../src/recipes.ts";
 import {
   describeSchedule,
   formatDateTime,
@@ -80,6 +82,39 @@ function truncate(text: string, max: number): string {
   const line = text.replace(/\s+/g, " ").trim();
   return line.length > max ? `${line.slice(0, max - 1)}…` : line;
 }
+
+function formatDate(at: number): string {
+  const date = new Date(at);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+/** The same starting points a task automation guide recommends. */
+const TEMPLATES = [
+  {
+    label: "Daily briefing",
+    title: "Daily briefing",
+    schedule: "0 9 * * *",
+    prompt: "Summarize what changed in this project since yesterday, then list the three most important things to do today.",
+  },
+  {
+    label: "Weekly report",
+    title: "Weekly report",
+    schedule: "0 18 * * fri",
+    prompt: "Write a short weekly report: what shipped, what is blocked, and what is planned next.",
+  },
+  {
+    label: "Inbox cleanup",
+    title: "Inbox cleanup",
+    schedule: "0 10 * * *",
+    prompt: "Go through unread mail and draft a reply for everything that needs one. Leave the drafts for review.",
+  },
+  {
+    label: "CI check",
+    title: "CI check",
+    schedule: "every 30m",
+    prompt: "Check the latest CI run. If it failed, explain the failure and propose a fix.",
+  },
+] as const;
 
 export default function scheduledTasks(pi: ExtensionAPI) {
   const registry = globalThis as Record<PropertyKey, unknown>;
@@ -223,6 +258,19 @@ export default function scheduledTasks(pi: ExtensionAPI) {
     return store.tasks.filter((task) => task.enabled);
   }
 
+  function cappedNext(task: Pick<ScheduledTask, "schedule" | "until">, from: number): number | null {
+    const next = nextRunAt(task.schedule, from);
+    if (next === null) return null;
+    if (task.until !== null && next > task.until) return null;
+    return next;
+  }
+
+  function stateMark(task: ScheduledTask): string {
+    if (runningTaskId === task.id) return "▶";
+    if (!task.enabled) return "○";
+    return task.history[0]?.status === "error" ? "✖" : "●";
+  }
+
   function nextRunLabel(): string {
     const next = enabledTasks()
       .map((task) => task.nextRunAt)
@@ -262,9 +310,8 @@ export default function scheduledTasks(pi: ExtensionAPI) {
         .sort((a, b) => (a.nextRunAt ?? Infinity) - (b.nextRunAt ?? Infinity))
         .slice(0, WIDGET_LINES)
         .map((task) => {
-          const mark = runningTaskId === task.id ? "▶" : "●";
           const when = task.nextRunAt ? ` · ${formatDateTime(task.nextRunAt)}` : "";
-          return `${mark} ${task.id} ${truncate(task.title, 42)} — ${describeSchedule(task.schedule)}${when}`;
+          return `${stateMark(task)} ${task.id} ${truncate(task.title, 42)} — ${describeSchedule(task.schedule)}${when}`;
         });
       const hidden = active.length - lines.length;
       if (hidden > 0) lines.push(`+${hidden} more · /tasks`);
@@ -326,7 +373,7 @@ export default function scheduledTasks(pi: ExtensionAPI) {
         await persist((fresh) => {
           const current = fresh.tasks.find((entry) => entry.id === task.id);
           if (!current) return;
-          const next = nextRunAt(current.schedule, Math.max(startedAt, scheduledFor));
+          const next = cappedNext(current, Math.max(startedAt, scheduledFor));
           current.nextRunAt = next;
           if (next === null) current.enabled = false;
           current.updatedAt = startedAt;
@@ -355,6 +402,7 @@ export default function scheduledTasks(pi: ExtensionAPI) {
           timeoutMs,
           command,
           sessionsRoot,
+          extraArgs: task.model ? ["--model", task.model] : [],
         });
         record = {
           at: startedAt,
@@ -391,7 +439,7 @@ export default function scheduledTasks(pi: ExtensionAPI) {
         ...current.history,
       ].slice(0, MAX_HISTORY);
       current.runs += 1;
-      const next = nextRunAt(current.schedule, now);
+      const next = cappedNext(current, now);
       current.nextRunAt = next;
       if (next === null) current.enabled = false;
       current.updatedAt = now;
@@ -404,7 +452,7 @@ export default function scheduledTasks(pi: ExtensionAPI) {
     for (const task of store.tasks) {
       if (!task.enabled) continue;
       if (task.nextRunAt === null) {
-        const next = nextRunAt(task.schedule, now);
+        const next = cappedNext(task, now);
         await persist((fresh) => {
           const current = fresh.tasks.find((entry) => entry.id === task.id);
           if (!current || current.nextRunAt !== null) return;
@@ -537,41 +585,184 @@ export default function scheduledTasks(pi: ExtensionAPI) {
     return cwd;
   }
 
-  async function createTask(ctx: ExtensionCommandContext): Promise<void> {
-    const title = await ctx.ui.input("Task name", "Morning inbox cleanup");
-    if (title === undefined || !title.trim()) return;
-
-    const prompt = await ctx.ui.editor("Prompt sent on every run", "");
-    if (prompt === undefined || !prompt.trim()) return;
-
-    const schedule = await ctx.ui.input(
-      'Schedule — cron "0 9 * * *", "every 30m", or "at 2026-11-26T09:00"',
-      "0 9 * * *",
+  /** Returns undefined when the user cancels, null for "no end date". */
+  async function askEndDate(
+    ctx: ExtensionCommandContext,
+    current: number | null,
+  ): Promise<number | null | undefined> {
+    const currentText = current === null ? "" : formatDate(current);
+    const answer = await ctx.ui.input(
+      current === null
+        ? "End date — YYYY-MM-DD, empty means no end"
+        : `End date — YYYY-MM-DD, currently ${currentText}, empty removes it`,
+      currentText,
     );
-    if (schedule === undefined || !schedule.trim()) return;
+    if (answer === undefined) return undefined;
 
-    let parsed;
+    const text = answer.trim();
+    if (!text) return null;
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+    if (!match) {
+      ctx.ui.notify("Use a date such as 2026-12-31.", "error");
+      return undefined;
+    }
+    const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+    const end = new Date(year, month - 1, day, 23, 59, 59, 999);
+    if (end.getFullYear() !== year || end.getMonth() !== month - 1 || end.getDate() !== day) {
+      ctx.ui.notify("That date does not exist.", "error");
+      return undefined;
+    }
+    if (end.getTime() <= Date.now()) {
+      ctx.ui.notify("The end date is already in the past.", "error");
+      return undefined;
+    }
+    return end.getTime();
+  }
+
+  /** Returns undefined when the user cancels, null for the default model. */
+  async function askModel(
+    ctx: ExtensionCommandContext,
+    current: string | null,
+  ): Promise<string | null | undefined> {
+    const answer = await ctx.ui.input(
+      current === null ? "Model — empty uses pi's default" : `Model — currently ${current}, empty uses pi's default`,
+      current ?? "",
+    );
+    if (answer === undefined) return undefined;
+    return answer.trim() || null;
+  }
+
+  /**
+   * Asks for a repeat rule the way the automation guide describes it, or takes
+   * the free-text schedule when the caller has one to offer.
+   */
+  async function askSchedule(
+    ctx: ExtensionCommandContext,
+    preset?: string,
+  ): Promise<string | null> {
+    const accept = (raw: string): string | null => {
+      try {
+        return parseSchedule(raw).canonical;
+      } catch (error) {
+        ctx.ui.notify(error instanceof ScheduleError ? error.message : errorText(error), "error");
+        return null;
+      }
+    };
+
+    if (preset !== undefined) {
+      const answer = await ctx.ui.input(`Schedule (empty keeps "${preset}")`, preset);
+      if (answer === undefined) return null;
+      return accept(answer.trim() || preset);
+    }
+
+    const labels = REPEAT_KINDS.map((entry) => `${entry.label} — ${entry.hint}`);
+    const choice = await ctx.ui.select("Repeat", labels);
+    if (choice === undefined) return null;
+    const repeat = REPEAT_KINDS[labels.indexOf(choice)];
+    if (!repeat) return null;
+
+    const ask = async (title: string, placeholder: string): Promise<string | null> => {
+      const answer = await ctx.ui.input(title, placeholder);
+      return answer === undefined ? null : answer.trim();
+    };
+
     try {
-      parsed = parseSchedule(schedule);
+      const kind: RepeatKind = repeat.kind;
+      if (kind === "daily") {
+        const time = await ask("Time", "09:00");
+        return time === null ? null : accept(buildSchedule("daily", { time }).canonical);
+      }
+      if (kind === "weekly") {
+        const days = await ask("Weekdays", "mon,wed,fri");
+        if (days === null) return null;
+        const time = await ask("Time", "09:00");
+        return time === null ? null : accept(buildSchedule("weekly", { days, time }).canonical);
+      }
+      if (kind === "monthly") {
+        const days = await ask("Days of the month", "1,15");
+        if (days === null) return null;
+        const time = await ask("Time", "09:00");
+        return time === null ? null : accept(buildSchedule("monthly", { days, time }).canonical);
+      }
+      if (kind === "yearly") {
+        const date = await ask("Month-day", "12-01");
+        if (date === null) return null;
+        const time = await ask("Time", "09:00");
+        return time === null ? null : accept(buildSchedule("yearly", { date, time }).canonical);
+      }
+      if (kind === "interval") {
+        const interval = await ask("Interval", "30m");
+        return interval === null ? null : accept(buildSchedule("interval", { interval }).canonical);
+      }
+      if (kind === "once") {
+        const at = await ask("When", "09:00 or 2026-11-26T09:00");
+        return at === null ? null : accept(buildSchedule("once", { at }).canonical);
+      }
+      const cron = await ask("Cron expression", "0 9 * * mon-fri");
+      return cron === null ? null : accept(buildSchedule("cron", { cron }).canonical);
     } catch (error) {
       ctx.ui.notify(error instanceof ScheduleError ? error.message : errorText(error), "error");
-      return;
+      return null;
     }
-    const firstRun = nextRunAt(parsed.schedule, Date.now());
-    if (firstRun === null) {
-      ctx.ui.notify("That time is already in the past.", "error");
+  }
+
+  async function createTask(ctx: ExtensionCommandContext): Promise<void> {
+    const blank = "Blank task";
+    const choice = await ctx.ui.select(
+      "New scheduled task",
+      [blank, ...TEMPLATES.map((template) => `${template.label} — ${describeSchedule(template.schedule)}`)],
+    );
+    if (choice === undefined) return;
+    const template = TEMPLATES.find((entry) => choice.startsWith(entry.label));
+
+    let title: string;
+    let prompt: string;
+    if (template) {
+      title = template.title;
+      prompt = template.prompt;
+    } else {
+      const answer = await ctx.ui.input("Task name", "Morning inbox cleanup");
+      if (answer === undefined || !answer.trim()) return;
+      title = answer.trim();
+      const text = await ctx.ui.editor("Prompt sent on every run", "");
+      if (text === undefined || !text.trim()) return;
+      prompt = text;
+    }
+
+    const schedule = await askSchedule(ctx, template ? template.schedule : undefined);
+    if (schedule === null) return;
+
+    let firstRun: number | null;
+    try {
+      firstRun = nextRunAt(schedule, Date.now());
+    } catch (error) {
+      ctx.ui.notify(errorText(error), "error");
       return;
     }
 
     const cwd = await askCwd(ctx, ctx.cwd);
     if (cwd === null) return;
 
+    const until = await askEndDate(ctx, null);
+    if (until === undefined) return;
+
+    const model = await askModel(ctx, null);
+    if (model === undefined) return;
+
     const catchUp = await askCatchUp(ctx);
     if (catchUp === null) return;
 
     const now = Date.now();
     try {
-      const fields = validateTaskInput({ title, prompt, schedule: parsed.canonical, cwd, catchUp }, now);
+      const fields = validateTaskInput({ title, prompt, schedule, cwd, catchUp, until, model }, now);
+      if (firstRun === null) {
+        ctx.ui.notify("That time is already in the past.", "error");
+        return;
+      }
+      if (fields.until !== null && firstRun > fields.until) {
+        ctx.ui.notify("The first run is after the end date.", "error");
+        return;
+      }
       let id = newTaskId();
       while (store.tasks.some((entry) => entry.id === id)) id = newTaskId();
       const task: ScheduledTask = {
@@ -603,29 +794,40 @@ export default function scheduledTasks(pi: ExtensionAPI) {
     const prompt = await ctx.ui.editor("Prompt sent on every run (empty keeps it)", task.prompt);
     if (prompt === undefined) return;
 
-    const schedule = await ctx.ui.input(`Schedule — currently "${task.schedule}" (empty keeps it)`, task.schedule);
-    if (schedule === undefined) return;
+    const schedule = await askSchedule(ctx, task.schedule);
+    if (schedule === null) return;
 
     const cwd = await askCwd(ctx, task.cwd);
     if (cwd === null) return;
 
+    const until = await askEndDate(ctx, task.until);
+    if (until === undefined) return;
+
+    const model = await askModel(ctx, task.model);
+    if (model === undefined) return;
+
     const catchUp = await askCatchUp(ctx);
     if (catchUp === null) return;
 
-    const nextSchedule = schedule.trim() || task.schedule;
     const now = Date.now();
     try {
       const fields = validateTaskInput(
         {
           title: title.trim() || task.title,
           prompt: prompt.trim() || task.prompt,
-          schedule: nextSchedule,
+          schedule,
           cwd,
           catchUp,
+          until,
+          model,
         },
         now,
       );
-      const next = nextRunAt(fields.schedule, now);
+      const next = cappedNext(fields, now);
+      if (fields.until !== null && next === null) {
+        ctx.ui.notify("No run is left before the end date; extend it or clear it.", "error");
+        return;
+      }
       await persist((fresh) => {
         const current = fresh.tasks.find((entry) => entry.id === task.id);
         if (!current) return;
@@ -648,7 +850,7 @@ export default function scheduledTasks(pi: ExtensionAPI) {
   }
 
   async function toggleTask(ctx: ExtensionCommandContext, task: ScheduledTask): Promise<void> {
-    const next = task.enabled ? null : nextRunAt(task.schedule, Date.now());
+    const next = task.enabled ? null : cappedNext(task, Date.now());
     if (!task.enabled && next === null) {
       ctx.ui.notify("This task has no future run; edit its schedule first.", "warning");
       return;
@@ -687,15 +889,39 @@ export default function scheduledTasks(pi: ExtensionAPI) {
     const choice = await ctx.ui.select(`Runs of "${task.title}" — pick one to open its session`, labels);
     if (choice === undefined) return;
     const run = task.history[labels.indexOf(choice)];
-    if (!run?.sessionFile) {
+    await openRunSession(ctx, run?.sessionFile);
+  }
+
+  async function openRunSession(ctx: ExtensionCommandContext, sessionFile: string | undefined): Promise<void> {
+    if (!sessionFile) {
       ctx.ui.notify("That run has no saved session.", "warning");
       return;
     }
     try {
-      await ctx.switchSession(run.sessionFile);
+      await ctx.switchSession(sessionFile);
     } catch (error) {
       ctx.ui.notify(`Could not open the session: ${errorText(error)}`, "error");
     }
+  }
+
+  /** Every task's runs on one timeline, the way a run-records tab shows them. */
+  async function showAllRuns(ctx: ExtensionCommandContext): Promise<void> {
+    const entries = store.tasks
+      .flatMap((task) => task.history.map((run) => ({ task, run })))
+      .sort((a, b) => b.run.at - a.run.at)
+      .slice(0, 30);
+    if (entries.length === 0) {
+      ctx.ui.notify("No runs yet. /tasks add", "info");
+      return;
+    }
+    const labels = entries.map(({ task, run }, index) => {
+      const icon = run.status === "ok" ? "✅" : run.status === "dispatched" ? "📨" : run.status === "missed" ? "⏭" : "❌";
+      return `${index + 1}. ${icon} ${formatDateTime(run.at)} · #${task.id} ${truncate(task.title, 28)} · ${run.status}`;
+    });
+    const choice = await ctx.ui.select("Run history — pick one to open its session", labels);
+    if (choice === undefined) return;
+    const entry = entries[labels.indexOf(choice)];
+    if (entry) await openRunSession(ctx, entry.run.sessionFile);
   }
 
   async function manageTask(ctx: ExtensionCommandContext, task: ScheduledTask): Promise<void> {
@@ -745,9 +971,10 @@ export default function scheduledTasks(pi: ExtensionAPI) {
 
       const newLabel = "＋ New task";
       const labels = tasks.map((task) => {
-        const state = runningTaskId === task.id ? "▶ running" : task.enabled ? "●" : "○ paused";
+        const state = stateMark(task);
         const next = task.enabled && task.nextRunAt ? ` · next ${formatRelative(task.nextRunAt)}` : "";
-        return `${task.id}  ${state}  ${truncate(task.title, 40)} — ${describeSchedule(task.schedule)}${next}`;
+        const end = task.until !== null ? ` · until ${formatDate(task.until)}` : "";
+        return `${task.id}  ${state}  ${truncate(task.title, 40)} — ${describeSchedule(task.schedule)}${next}${end}`;
       });
       const choice = await ctx.ui.select(
         `Scheduled tasks · ${enabledTasks().length} active · ${tasks.length} total`,
@@ -766,11 +993,12 @@ export default function scheduledTasks(pi: ExtensionAPI) {
   // ---------------------------------------------------------------- commands
 
   pi.registerCommand("tasks", {
-    description: "Scheduled tasks: /tasks opens the manager · add · list · run · edit · pause · resume · rm",
+    description: "Scheduled tasks: /tasks opens the manager · add · list · runs · run · edit · pause · resume · rm",
     getArgumentCompletions: (prefix: string) => {
       const items = [
         { value: "add", label: "add", description: "Create a scheduled task" },
         { value: "list", label: "list", description: "Print the tasks" },
+        { value: "runs", label: "runs", description: "Every task's runs, newest first" },
         ...store.tasks.flatMap((task) => [
           { value: `run ${task.id}`, label: `run ${task.id}`, description: `${task.title} — run now` },
           { value: `edit ${task.id}`, label: `edit ${task.id}`, description: `${task.title} — edit` },
@@ -788,6 +1016,7 @@ export default function scheduledTasks(pi: ExtensionAPI) {
 
       if (!input) return openManager(ctx);
       if (head === "add" || head === "new") return createTask(ctx);
+      if ((head === "runs" || head === "history") && !argument) return showAllRuns(ctx);
 
       if (head === "list") {
         if (store.tasks.length === 0) {
@@ -832,7 +1061,9 @@ export default function scheduledTasks(pi: ExtensionAPI) {
           return showRuns(ctx, task);
         case "show":
           ctx.ui.notify(
-            `#${task.id} ${task.title}\n${task.prompt}\n${describeSchedule(task.schedule)} · ${task.cwd}\n${
+            `#${task.id} ${task.title}\n${task.prompt}\n${describeSchedule(task.schedule)} · ${task.cwd}${
+              task.until !== null ? ` · until ${formatDate(task.until)}` : ""
+            }${task.model ? ` · model ${task.model}` : ""}\n${
               task.nextRunAt ? `next ${formatDateTime(task.nextRunAt)}` : "no future run"
             } · ${task.runs} run${task.runs === 1 ? "" : "s"}`,
             "info",
@@ -840,6 +1071,112 @@ export default function scheduledTasks(pi: ExtensionAPI) {
           return;
         default:
           ctx.ui.notify(`Unknown subcommand "${head}". Try /tasks`, "warning");
+      }
+    },
+  });
+
+  // Creation from a sentence: "every weekday at 9, summarize CI".
+  pi.registerTool({
+    name: "scheduled_task",
+    label: "Scheduled Task",
+    description:
+      "Create a scheduled task that sends a prompt on a schedule, or list existing tasks. Use when the user asks for something recurring or at a later time, such as 'every weekday at 9 summarize CI' or 'tomorrow at 3 remind me'.",
+    parameters: Type.Object({
+      action: Type.Union([Type.Literal("create"), Type.Literal("list")]),
+      title: Type.Optional(Type.String({ description: "Short task name" })),
+      prompt: Type.Optional(Type.String({ description: "The prompt sent on every run" })),
+      schedule: Type.Optional(
+        Type.String({
+          description:
+            'Five-field cron ("0 9 * * mon-fri"), an interval ("every 30m"), or a one-off ("at 2026-11-26T09:00")',
+        }),
+      ),
+      cwd: Type.Optional(Type.String({ description: "Working directory; defaults to the current one" })),
+      catchUp: Type.Optional(
+        Type.Boolean({ description: "Run once if a run was missed while pi was closed. Defaults to false" }),
+      ),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      reload();
+      if (params.action === "list") {
+        const text =
+          store.tasks.length === 0
+            ? "No scheduled tasks."
+            : store.tasks
+                .map((task) => {
+                  const next = task.nextRunAt ? formatDateTime(task.nextRunAt) : "no future run";
+                  return `#${task.id} ${task.title} — ${describeSchedule(task.schedule)} · next ${next} · ${
+                    task.enabled ? "active" : "paused"
+                  }`;
+                })
+                .join("\n");
+        return { content: [{ type: "text" as const, text }], details: { tasks: store.tasks.length } };
+      }
+
+      const title = (params.title ?? "").trim();
+      const prompt = (params.prompt ?? "").trim();
+      const schedule = (params.schedule ?? "").trim();
+      if (!title || !prompt || !schedule) {
+        return {
+          content: [{ type: "text" as const, text: "Creating a task needs title, prompt and schedule." }],
+          details: {},
+        };
+      }
+
+      const cwd = path.resolve((params.cwd ?? "").trim() || ctx.cwd);
+      try {
+        const stat = await fsp.stat(cwd);
+        if (!stat.isDirectory()) throw new Error("not a directory");
+      } catch {
+        return { content: [{ type: "text" as const, text: `Not a directory: ${cwd}` }], details: {} };
+      }
+
+      try {
+        const now = Date.now();
+        const parsed = parseSchedule(schedule, now);
+        const first = nextRunAt(parsed.schedule, now);
+        if (first === null) throw new Error("That schedule has no future run.");
+        const fields = validateTaskInput(
+          {
+            title,
+            prompt,
+            schedule: parsed.canonical,
+            cwd,
+            catchUp: params.catchUp === true,
+            until: null,
+            model: null,
+          },
+          now,
+        );
+        let id = newTaskId();
+        while (store.tasks.some((entry) => entry.id === id)) id = newTaskId();
+        const task: ScheduledTask = {
+          id,
+          ...fields,
+          createdAt: now,
+          updatedAt: now,
+          nextRunAt: first,
+          runs: 0,
+          history: [],
+        };
+        await persist((fresh) => {
+          upsertTask(fresh, task);
+        });
+        refreshUi();
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Created #${id} "${fields.title}" · ${describeSchedule(fields.schedule)} · first run ${formatDateTime(first)} in ${cwd}`,
+            },
+          ],
+          details: { id, nextRunAt: first },
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text" as const, text: `Could not create the task: ${errorText(error)}` }],
+          details: {},
+        };
       }
     },
   });

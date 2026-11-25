@@ -75,6 +75,7 @@ resume it, see its runs, or delete it.
 | `/tasks` | Open the manager |
 | `/tasks add` | Create a task (name, prompt, schedule, directory) |
 | `/tasks list` | Print every task and its next run |
+| `/tasks runs` | Every task's runs on one timeline; open one |
 | `/tasks run <id>` | Run a task now, without changing its schedule |
 | `/tasks edit <id>` | Change name, prompt, schedule or directory |
 | `/tasks pause <id>` / `resume <id>` | Stop or restart the schedule |
@@ -82,6 +83,23 @@ resume it, see its runs, or delete it.
 | `/tasks rm <id>` | Delete the task and its history |
 | `/tasks show <id>` | Print one task in full |
 | `/at 09:00 <prompt>` | Quick one-off task in the current directory |
+
+### Creating a task
+
+`/tasks add` asks for a starting point first (blank, or one of four templates: a
+daily briefing, a weekly report, an inbox cleanup, a CI check), then:
+
+1. **Name** and **prompt**.
+2. **Repeat**: every day, every week (several weekdays), every month (several
+   days), every year, every N minutes or hours, once, or a custom cron.
+3. **Time** for the rule, e.g. `09:00`.
+4. **Working directory**, **end date** (optional), **model** (optional), and
+   what to do about a missed run.
+
+A template skips straight to the schedule question with its own default.
+
+The agent can create a task from a sentence too — "every weekday at 9, summarize
+CI" — through the `scheduled_task` tool (create and list only).
 
 ### Schedules
 
@@ -116,6 +134,29 @@ status, duration, a short summary and the session file (last 20 runs).
   `/tasks`.
 - A widget above the composer lists the next runs.
 - Create and edit use Pi Web's own dialogs, so they work on a phone too.
+
+## Automation-guide parity
+
+WorkBuddy publishes an automation guide; this is how the parts that make sense
+for a local pi client map onto it.
+
+| WorkBuddy | Here |
+| --- | --- |
+| Name, prompt, workspace | Same: name, prompt, working directory |
+| Repeat: interval, once, daily, weekly, monthly, yearly | Same, plus custom cron |
+| Multiple weekdays or month days in one rule | Same (`mon,wed,fri`, `1,15`) |
+| Time and validity period | Time, plus an optional end date |
+| Model per task | Yes (`--model`) |
+| Run now, edit, pause, delete | Same |
+| Run records across every task | `/tasks runs` |
+| A task page with a run timeline; open a run | The manager's **Runs**, then open the run's session |
+| Create from a sentence | `scheduled_task` tool |
+| Create from a template | Four built-in templates |
+| Cloud tasks that run with the computer off | No; runs happen on this machine |
+| Push results to WeCom | No; each run is a session, so Pi Web's own notifications apply |
+| Full-access vs default permissions | No; a run uses pi's own configuration and trust rules |
+
+Two weeks is the one repeat rule missing: a five-field cron cannot express it.
 
 ## Missed runs
 
@@ -180,7 +221,7 @@ delivered into the current session instead of a separate run.
 
 ```bash
 npm install
-npm test          # 35 tests: schedule math, store, runner, extension wiring
+npm test          # 43 tests: schedule math, repeat rules, store, runner, extension wiring
 npm run typecheck
 ```
 
