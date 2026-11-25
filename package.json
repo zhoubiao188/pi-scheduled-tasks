@@ -1,0 +1,49 @@
+{
+  "name": "pi-scheduled-tasks",
+  "version": "0.1.0",
+  "description": "Scheduled tasks for pi and Pi Web: cron, intervals and one-off prompts, each run in its own session.",
+  "type": "module",
+  "license": "MIT",
+  "author": "zhoubiao188",
+  "homepage": "https://github.com/zhoubiao188/pi-scheduled-tasks#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zhoubiao188/pi-scheduled-tasks.git"
+  },
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "pi-web",
+    "cron",
+    "scheduler",
+    "scheduled-tasks"
+  ],
+  "files": [
+    "extensions",
+    "src",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE"
+  ],
+  "pi": {
+    "extensions": [
+      "./extensions/scheduled-tasks.ts"
+    ]
+  },
+  "scripts": {
+    "test": "node --experimental-strip-types --test test/*.test.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.84.2",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  }
+}
