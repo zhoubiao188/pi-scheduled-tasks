@@ -34,6 +34,13 @@ Pi Web 刻意保持轻量。它的贡献指南把「定时调度」和「定时�
 [会话存活登记](https://github.com/agegr/pi-web/blob/main/docs/integrations.md#extension-session-liveness)，
 在 CLI 和 Pi Web 中行为一致。
 
+## 相关项目
+
+npm 上的 `pi-scheduled-tasks`（作者 errfld）也提供定时提示词：它在当前会话里执行，
+并额外提供模型可调用的工具。本项目的区别只有一点：每次执行都在任务目录下开一个独立
+会话，并且为浏览器做了管理器、状态栏和运行历史。如果你只是想在当前会话里加提醒，
+那个包可能就够了。
+
 ## 安装
 
 ```bash

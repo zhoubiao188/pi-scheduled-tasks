@@ -38,6 +38,14 @@ extension API and Pi Web's documented
 [liveness registry](https://github.com/agegr/pi-web/blob/main/docs/integrations.md#extension-session-liveness),
 and it behaves the same in the CLI and in Pi Web.
 
+## Related work
+
+`pi-scheduled-tasks` on npm (by errfld) also schedules prompts: it runs them
+inside the current session and adds model-callable tools. This package does one
+thing differently: every run is a separate session in the task's directory, and
+the manager, status bar and run history are built for the browser. If you only
+need reminders in the session you already have open, that package may be enough.
+
 ## Install
 
 ```bash
