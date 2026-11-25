@@ -107,11 +107,18 @@ resume it, see its runs, or delete it.
 daily briefing, a weekly report, an inbox cleanup, a CI check), then:
 
 1. **Name** and **prompt**.
-2. **Repeat**: every day, every week (several weekdays), every month (several
-   days), every year, every N minutes or hours, once, or a custom cron.
-3. **Time** for the rule, e.g. `09:00`.
-4. **Working directory**, **end date** (optional), **model** (optional), and
+2. **Repeat**: every day, every week, every month, every year, every N minutes
+   or hours, once, or a custom cron. Nothing here is typed as an expression.
+3. **Time** from an hour dropdown and a minute dropdown.
+4. Weekdays and days of the month are multi-select: pick Monday, then Wednesday,
+   then **Done**.
+5. **Working directory**, **end date** (optional), **model** (optional), and
    what to do about a missed run.
+
+**Edit** opens the same pickers, marked with the current choice, so a task is
+never edited through a cron string. The manager and the widget show the rule in
+words (`every weekdays at 09:00`, `every month on days 1, 15 at 08:05`); raw
+cron appears only for a custom expression.
 
 A template skips straight to the schedule question with its own default.
 

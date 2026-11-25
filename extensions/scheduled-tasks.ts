@@ -27,7 +27,7 @@ import { getAgentDir, withFileMutationQueue } from "@earendil-works/pi-coding-ag
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { DEFAULT_TIMEOUT_MS, resolvePiCommand, runPiPrompt, type RunOutcome } from "../src/runner.ts";
-import { buildSchedule, REPEAT_KINDS, type RepeatKind } from "../src/recipes.ts";
+import { buildSchedule, inferRepeat, REPEAT_KINDS, type RepeatKind } from "../src/recipes.ts";
 import {
   describeSchedule,
   formatDateTime,
@@ -626,14 +626,155 @@ export default function scheduledTasks(pi: ExtensionAPI) {
     return answer.trim() || null;
   }
 
+  const WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
+  const WEEKDAY_LABEL = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const MONTH_LABEL = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+  function pad2(value: number): string {
+    return String(value).padStart(2, "0");
+  }
+
+  function clockParts(time: string | undefined): { hours: number; minutes: number } | null {
+    const match = /^(\d{1,2}):(\d{2})$/.exec(time ?? "");
+    if (!match) return null;
+    return { hours: Number(match[1]), minutes: Number(match[2]) };
+  }
+
+  /** Hour and minute dropdowns; the current value, if any, is listed first. */
+  async function askTime(ctx: ExtensionCommandContext, current?: string): Promise<string | null> {
+    const parts = clockParts(current);
+    const hourValue = parts ? pad2(parts.hours) : null;
+    const hourOptions = Array.from({ length: 24 }, (_, hour) => pad2(hour));
+    const orderedHours = hourValue ? [hourValue, ...hourOptions.filter((hour) => hour !== hourValue)] : hourOptions;
+    const hour = await ctx.ui.select(
+      hourValue ? `Hour (currently ${hourValue})` : "Hour",
+      orderedHours.map((value) => (value === hourValue ? `${value} (current)` : value)),
+    );
+    if (hour === undefined) return null;
+    const hours = Number(hour.slice(0, 2));
+
+    const minuteValue = parts ? pad2(parts.minutes) : null;
+    const minuteOptions = Array.from({ length: 12 }, (_, index) => pad2(index * 5));
+    if (minuteValue && !minuteOptions.includes(minuteValue)) minuteOptions.push(minuteValue);
+    minuteOptions.sort();
+    const orderedMinutes = minuteValue
+      ? [minuteValue, ...minuteOptions.filter((value) => value !== minuteValue)]
+      : minuteOptions;
+    const minute = await ctx.ui.select(
+      minuteValue ? `Minute (currently ${minuteValue})` : "Minute",
+      orderedMinutes.map((value) => (value === minuteValue ? `${value} (current)` : value)),
+    );
+    if (minute === undefined) return null;
+    return `${pad2(hours)}:${minute.slice(0, 2)}`;
+  }
+
+  /** Pick several weekdays; each pick toggles and the menu stays open. */
+  async function askWeekdays(ctx: ExtensionCommandContext, current?: string): Promise<string | null> {
+    const selected = new Set(
+      (current ?? "")
+        .split(",")
+        .map((value) => Number(value.trim()))
+        .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6),
+    );
+    for (;;) {
+      const options = WEEKDAY_ORDER.map(
+        (day) => `${selected.has(day) ? "✓" : " "} ${WEEKDAY_LABEL[day]}`,
+      );
+      options.push("Done");
+      const choice = await ctx.ui.select(`Weekdays (${selected.size} selected)`, options);
+      if (choice === undefined) return null;
+      if (choice === "Done") {
+        if (selected.size === 0) {
+          ctx.ui.notify("Choose at least one weekday.", "warning");
+          continue;
+        }
+        return [...selected].sort((a, b) => a - b).join(",");
+      }
+      const index = options.indexOf(choice);
+      const day = WEEKDAY_ORDER[index];
+      if (day === undefined) continue;
+      if (selected.has(day)) selected.delete(day);
+      else selected.add(day);
+    }
+  }
+
+  /** Pick several days of the month; each pick toggles and the menu stays open. */
+  async function askMonthDays(ctx: ExtensionCommandContext, current?: string): Promise<string | null> {
+    const selected = new Set(
+      (current ?? "")
+        .split(",")
+        .map((value) => Number(value.trim()))
+        .filter((value) => Number.isInteger(value) && value >= 1 && value <= 31),
+    );
+    for (;;) {
+      const options = Array.from({ length: 31 }, (_, index) => {
+        const day = index + 1;
+        return `${selected.has(day) ? "✓" : " "} ${day}`;
+      });
+      options.push("Done");
+      const choice = await ctx.ui.select(`Days of the month (${selected.size} selected)`, options);
+      if (choice === undefined) return null;
+      if (choice === "Done") {
+        if (selected.size === 0) {
+          ctx.ui.notify("Choose at least one day.", "warning");
+          continue;
+        }
+        return [...selected].sort((a, b) => a - b).join(",");
+      }
+      const day = options.indexOf(choice) + 1;
+      if (day < 1 || day > 31) continue;
+      if (selected.has(day)) selected.delete(day);
+      else selected.add(day);
+    }
+  }
+
+  /** Month and day dropdowns for a yearly rule. */
+  async function askMonthDay(ctx: ExtensionCommandContext, current?: string): Promise<string | null> {
+    const match = /^(\d{1,2})-(\d{1,2})$/.exec(current ?? "");
+    const currentMonth = match ? Number(match[1]) : null;
+    const currentDay = match ? Number(match[2]) : null;
+
+    const monthOptions = MONTH_LABEL.map((label, index) => {
+      const value = index + 1;
+      return currentMonth === value ? `${pad2(value)} ${label} (current)` : `${pad2(value)} ${label}`;
+    });
+    if (currentMonth) {
+      const chosen = monthOptions[currentMonth - 1];
+      monthOptions.splice(currentMonth - 1, 1);
+      monthOptions.unshift(chosen);
+    }
+    const month = await ctx.ui.select("Month", monthOptions);
+    if (month === undefined) return null;
+    const monthValue = Number(month.slice(0, 2));
+
+    const dayOptions = Array.from({ length: 31 }, (_, index) => {
+      const value = index + 1;
+      return currentDay === value ? `${value} (current)` : String(value);
+    });
+    if (currentDay) {
+      const chosen = dayOptions[currentDay - 1];
+      dayOptions.splice(currentDay - 1, 1);
+      dayOptions.unshift(chosen);
+    }
+    const day = await ctx.ui.select("Day", dayOptions);
+    if (day === undefined) return null;
+    return `${pad2(monthValue)}-${pad2(Number(day))}`;
+  }
+
   /**
-   * Asks for a repeat rule the way the automation guide describes it, or takes
-   * the free-text schedule when the caller has one to offer.
+   * Asks for a repeat rule with dropdowns. `current` is the schedule being
+   * edited: its kind is marked, and its time and days prefill the pickers.
    */
-  async function askSchedule(
-    ctx: ExtensionCommandContext,
-    preset?: string,
-  ): Promise<string | null> {
+  async function askSchedule(ctx: ExtensionCommandContext, current?: string): Promise<string | null> {
+    let defaults: ReturnType<typeof inferRepeat> | null = null;
+    if (current) {
+      try {
+        defaults = inferRepeat(current);
+      } catch {
+        defaults = null;
+      }
+    }
+
     const accept = (raw: string): string | null => {
       try {
         return parseSchedule(raw).canonical;
@@ -643,57 +784,58 @@ export default function scheduledTasks(pi: ExtensionAPI) {
       }
     };
 
-    if (preset !== undefined) {
-      const answer = await ctx.ui.input(`Schedule (empty keeps "${preset}")`, preset);
-      if (answer === undefined) return null;
-      return accept(answer.trim() || preset);
-    }
-
-    const labels = REPEAT_KINDS.map((entry) => `${entry.label} — ${entry.hint}`);
+    const labels = REPEAT_KINDS.map((entry) => {
+      const currentMark = defaults?.kind === entry.kind ? " (current)" : "";
+      return `${entry.label} — ${entry.hint}${currentMark}`;
+    });
     const choice = await ctx.ui.select("Repeat", labels);
     if (choice === undefined) return null;
     const repeat = REPEAT_KINDS[labels.indexOf(choice)];
     if (!repeat) return null;
 
-    const ask = async (title: string, placeholder: string): Promise<string | null> => {
-      const answer = await ctx.ui.input(title, placeholder);
-      return answer === undefined ? null : answer.trim();
-    };
-
     try {
       const kind: RepeatKind = repeat.kind;
       if (kind === "daily") {
-        const time = await ask("Time", "09:00");
+        const time = await askTime(ctx, defaults?.kind === "daily" ? defaults.time : undefined);
         return time === null ? null : accept(buildSchedule("daily", { time }).canonical);
       }
       if (kind === "weekly") {
-        const days = await ask("Weekdays", "mon,wed,fri");
+        const days = await askWeekdays(ctx, defaults?.kind === "weekly" ? defaults.days : undefined);
         if (days === null) return null;
-        const time = await ask("Time", "09:00");
+        const time = await askTime(ctx, defaults?.kind === "weekly" ? defaults.time : undefined);
         return time === null ? null : accept(buildSchedule("weekly", { days, time }).canonical);
       }
       if (kind === "monthly") {
-        const days = await ask("Days of the month", "1,15");
+        const days = await askMonthDays(ctx, defaults?.kind === "monthly" ? defaults.days : undefined);
         if (days === null) return null;
-        const time = await ask("Time", "09:00");
+        const time = await askTime(ctx, defaults?.kind === "monthly" ? defaults.time : undefined);
         return time === null ? null : accept(buildSchedule("monthly", { days, time }).canonical);
       }
       if (kind === "yearly") {
-        const date = await ask("Month-day", "12-01");
+        const date = await askMonthDay(ctx, defaults?.kind === "yearly" ? defaults.date : undefined);
         if (date === null) return null;
-        const time = await ask("Time", "09:00");
+        const time = await askTime(ctx, defaults?.kind === "yearly" ? defaults.time : undefined);
         return time === null ? null : accept(buildSchedule("yearly", { date, time }).canonical);
       }
       if (kind === "interval") {
-        const interval = await ask("Interval", "30m");
-        return interval === null ? null : accept(buildSchedule("interval", { interval }).canonical);
+        const fallback = defaults?.kind === "interval" ? defaults.interval : "30m";
+        const answer = await ctx.ui.input(`Interval${fallback ? ` (currently ${fallback})` : ""}`, fallback ?? "30m");
+        if (answer === undefined) return null;
+        return accept(buildSchedule("interval", { interval: answer.trim() || fallback || "30m" }).canonical);
       }
       if (kind === "once") {
-        const at = await ask("When", "09:00 or 2026-11-26T09:00");
-        return at === null ? null : accept(buildSchedule("once", { at }).canonical);
+        const fallback = defaults?.kind === "once" ? defaults.at : "09:00";
+        const answer = await ctx.ui.input(
+          `When${fallback ? ` (currently ${fallback})` : ""} — 09:00 or 2026-11-26T09:00`,
+          fallback ?? "09:00",
+        );
+        if (answer === undefined) return null;
+        return accept(buildSchedule("once", { at: answer.trim() || fallback || "09:00" }).canonical);
       }
-      const cron = await ask("Cron expression", "0 9 * * mon-fri");
-      return cron === null ? null : accept(buildSchedule("cron", { cron }).canonical);
+      const fallback = defaults?.kind === "cron" ? defaults.cron : "0 9 * * mon-fri";
+      const answer = await ctx.ui.input(`Cron expression${fallback ? ` (currently ${fallback})` : ""}`, fallback ?? "");
+      if (answer === undefined) return null;
+      return accept(buildSchedule("cron", { cron: answer.trim() || fallback || "" }).canonical);
     } catch (error) {
       ctx.ui.notify(error instanceof ScheduleError ? error.message : errorText(error), "error");
       return null;

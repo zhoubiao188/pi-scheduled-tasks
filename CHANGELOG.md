@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.0
+
+- repeat rules are picked, not typed: hour and minute dropdowns, multi-select
+  weekdays and days of the month, month/day dropdowns for a yearly rule
+- editing a task opens the same pickers, marked with the current choice, so no
+  cron string is ever shown in the editor
+- the manager and widget describe a rule in words ("every weekday at 09:00",
+  "every month on days 1, 15 at 08:05"); raw cron only for custom expressions
+
 ## 0.2.4
 
 - fix: Pi Web runs every session in one process, so a process-wide "already

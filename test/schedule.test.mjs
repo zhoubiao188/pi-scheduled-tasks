@@ -98,7 +98,12 @@ test("one-off schedules have no next run after they fire", () => {
 
 test("describeSchedule and the time formatters stay readable", () => {
   const now = at(2026, 11, 25, 12, 0);
-  assert.equal(describeSchedule("0 9 * * *", now), "cron 0 9 * * *");
+  assert.equal(describeSchedule("0 9 * * *", now), "every day at 09:00");
+  assert.equal(describeSchedule("30 8 * * 1,3,5", now), "every Mon, Wed, Fri at 08:30");
+  assert.equal(describeSchedule("0 9 * * 1-5", now), "every weekday at 09:00");
+  assert.equal(describeSchedule("0 9 1,15 * *", now), "every month on days 1, 15 at 09:00");
+  assert.equal(describeSchedule("0 9 1 12 *", now), "every year on Dec 1 at 09:00");
+  assert.equal(describeSchedule("*/5 * * * *", now), "cron */5 * * * *");
   assert.equal(describeSchedule("every 2d", now), "every 2d");
   assert.equal(describeSchedule("at 2026-11-26T09:00", now), "once tomorrow 09:00");
   assert.equal(describeSchedule("at 2026-12-01T09:00", now), "once 12/01 09:00");

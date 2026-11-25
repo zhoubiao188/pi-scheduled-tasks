@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildSchedule } from "../src/recipes.ts";
+import { buildSchedule, inferRepeat } from "../src/recipes.ts";
 import { ScheduleError } from "../src/schedule.ts";
 
 const now = new Date(2026, 10, 25, 12, 0, 0, 0).getTime();
@@ -38,4 +38,15 @@ test("repeat rules reject what a person cannot mean", () => {
     () => buildSchedule("once", { at: "tomorrow" }, now),
   ];
   for (const run of cases) assert.throws(run, ScheduleError);
+});
+
+test("an existing schedule is read back into the picker", () => {
+  assert.deepEqual(inferRepeat("0 9 * * *", now), { kind: "daily", time: "09:00" });
+  assert.deepEqual(inferRepeat("30 8 * * 1,3,5", now), { kind: "weekly", time: "08:30", days: "1,3,5" });
+  assert.deepEqual(inferRepeat("0 9 1,15 * *", now), { kind: "monthly", time: "09:00", days: "1,15" });
+  assert.deepEqual(inferRepeat("0 9 1 12 *", now), { kind: "yearly", time: "09:00", date: "12-01" });
+  assert.deepEqual(inferRepeat("every 30m", now), { kind: "interval", interval: "30m" });
+  assert.equal(inferRepeat("at 2026-11-26T09:00", now).kind, "once");
+  assert.equal(inferRepeat("*/5 * * * *", now).kind, "cron");
+  assert.equal(inferRepeat("*/5 * * * *", now).cron, "*/5 * * * *");
 });

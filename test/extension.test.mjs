@@ -104,11 +104,13 @@ test("creating a task through the manager persists it", async () => {
     confirm: [true],
     select: [
       "Blank task",
-      "Every day — A time such as 09:00",
+      (options) => options.find((option) => option.startsWith("Every day")),
+      (options) => options.find((option) => option.startsWith("09")),
+      (options) => options.find((option) => option.startsWith("00")),
       "Skip runs missed while pi was closed",
       "Close",
     ],
-    input: ["Morning cleanup", "09:00", "", "", ""],
+    input: ["Morning cleanup", "", "", ""],
     editor: ["Summarize the inbox and list what needs a reply."],
   });
   await commands.get("tasks").handler("", fakeCtx(ui));
@@ -129,7 +131,7 @@ test("creating a task through the manager persists it", async () => {
 
 test("an invalid schedule is refused without writing a task", async () => {
   const { ui } = answers({
-    select: ["Blank task", "Custom cron — A five-field expression"],
+    select: ["Blank task", (options) => options.find((option) => option.startsWith("Custom cron"))],
     input: ["Bad task", "every 30s"],
     editor: ["do something"],
   });
@@ -143,14 +145,21 @@ test("an invalid schedule is refused without writing a task", async () => {
 
 test("a template creates a task with one schedule question", async () => {
   const { ui } = answers({
-    select: ["Weekly report — cron 0 18 * * fri", "Run once when a session opens"],
-    input: ["", "", "", ""],
+    select: [
+      "Weekly report — every Friday at 18:00",
+      (options) => options.find((option) => option.startsWith("Every week")),
+      "Done",
+      (options) => options.find((option) => option.startsWith("18")),
+      (options) => options.find((option) => option.startsWith("00")),
+      "Run once when a session opens",
+    ],
+    input: ["", "", ""],
   });
   await commands.get("tasks").handler("add", fakeCtx(ui));
 
   const task = readStore().tasks.at(-1);
   assert.equal(task.title, "Weekly report");
-  assert.equal(task.schedule, "0 18 * * fri");
+  assert.equal(task.schedule, "0 18 * * 5");
   assert.equal(task.catchUp, true);
   assert.match(task.prompt, /weekly report/i);
 });
@@ -186,9 +195,14 @@ test("pause and resume flip the task without touching its history", async () => 
 test("the edit wizard keeps fields the user leaves empty", async () => {
   const id = readStore().tasks[0].id;
   const { ui } = answers({
-    input: ["Renamed", "", "", "2026-12-31", ""],
+    input: ["Renamed", "", "2026-12-31", ""],
     editor: ["New prompt"],
-    select: ["Skip runs missed while pi was closed"],
+    select: [
+      (options) => options.find((option) => option.startsWith("Every day")),
+      (options) => options.find((option) => option.startsWith("09")),
+      (options) => options.find((option) => option.startsWith("00")),
+      "Skip runs missed while pi was closed",
+    ],
   });
   await commands.get("tasks").handler(`edit ${id}`, fakeCtx(ui));
 

@@ -9,9 +9,72 @@
  * here rather than stored and discovered later by the timer.
  */
 
-import { parseSchedule, ScheduleError, type ParsedSchedule } from "./schedule.ts";
+import { describeCron, parseCron, parseSchedule, ScheduleError, type ParsedSchedule } from "./schedule.ts";
 
 export type RepeatKind = "daily" | "weekly" | "monthly" | "yearly" | "interval" | "once" | "cron";
+
+export type RepeatDefaults = {
+  kind: RepeatKind;
+  /** HH:MM, for daily/weekly/monthly/yearly. */
+  time?: string;
+  /** Weekday numbers, comma separated. */
+  days?: string;
+  /** MM-DD, for yearly. */
+  date?: string;
+  /** Such as 30m, for interval. */
+  interval?: string;
+  /** YYYY-MM-DDTHH:MM, for once. */
+  at?: string;
+  /** The expression itself, for custom cron. */
+  cron?: string;
+};
+
+function pad(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
+function clockOf(hours: number, minutes: number): string {
+  return `${pad(hours)}:${pad(minutes)}`;
+}
+
+/**
+ * Reads an existing schedule back into the picker's fields, so editing shows
+ * the same dropdowns instead of a cron string.
+ */
+export function inferRepeat(schedule: string, now = Date.now()): RepeatDefaults {
+  const parsed = parseSchedule(schedule, now).schedule;
+
+  if (parsed.kind === "every") {
+    return { kind: "interval", interval: parsed.label.replace(/^every\s+/i, "") };
+  }
+  if (parsed.kind === "at") {
+    const date = new Date(parsed.at);
+    return {
+      kind: "once",
+      at: `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`,
+    };
+  }
+
+  const spec = parseCron(parsed.expr);
+  if (!spec) return { kind: "cron", cron: schedule };
+  const singleTime = spec.minutes.length === 1 && spec.hours.length === 1;
+  const everyDay = spec.daysOfMonth.length === 31 && spec.months.length === 12;
+  const everyWeekday = spec.daysOfWeek.length === 7;
+  const time = singleTime ? clockOf(spec.hours[0], spec.minutes[0]) : undefined;
+
+  if (time && everyDay && everyWeekday) return { kind: "daily", time };
+  if (time && everyDay) return { kind: "weekly", time, days: spec.daysOfWeek.join(",") };
+  if (time && everyWeekday && spec.months.length === 12) {
+    return { kind: "monthly", time, days: spec.daysOfMonth.join(",") };
+  }
+  if (time && everyWeekday && spec.months.length === 1 && spec.daysOfMonth.length === 1) {
+    return { kind: "yearly", time, date: `${pad(spec.months[0])}-${pad(spec.daysOfMonth[0])}` };
+  }
+  // Anything else keeps its expression; the picker calls it "custom cron".
+  return { kind: "cron", cron: schedule, time };
+}
+
+export { describeCron };
 
 export const REPEAT_KINDS: Array<{ kind: RepeatKind; label: string; hint: string }> = [
   { kind: "daily", label: "Every day", hint: "A time such as 09:00" },

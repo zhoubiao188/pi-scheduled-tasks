@@ -268,12 +268,56 @@ export function nextRunAt(schedule: Schedule | string, after: number): number | 
   }
 }
 
+const SHORT_WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function weekdayList(days: number[]): string {
+  const sorted = [...days].sort((a, b) => a - b);
+  if (sorted.length === 5 && sorted.every((day, index) => day === index + 1)) return "weekday";
+  if (sorted.length === 2 && sorted[0] === 0 && sorted[1] === 6) return "weekend";
+  const names = sorted.map((day) => SHORT_WEEKDAYS[day]);
+  return names.length === 1 ? names[0] : names.join(", ");
+}
+
+function dayList(days: number[]): string {
+  const sorted = [...days].sort((a, b) => a - b);
+  return sorted.length === 1 ? `day ${sorted[0]}` : `days ${sorted.join(", ")}`;
+}
+
+/** Turns a cron expression into the sentence the manager shows. */
+export function describeCron(expr: string): string {
+  const spec = parseCron(expr);
+  if (!spec) return `cron ${expr}`;
+  const { minutes, hours, daysOfMonth, months, daysOfWeek } = spec;
+  const time =
+    minutes.length === 1 && hours.length === 1
+      ? `at ${String(hours[0]).padStart(2, "0")}:${String(minutes[0]).padStart(2, "0")}`
+      : null;
+  const everyDay = isFullRange(daysOfMonth, 1, 31);
+  const everyMonth = isFullRange(months, 1, 12);
+  const everyWeekday = isFullRange(daysOfWeek, 0, 6);
+
+  if (time && everyDay && everyMonth && everyWeekday) return `every day ${time}`;
+  if (time && everyDay && everyMonth) return `every ${weekdayList(daysOfWeek)} ${time}`;
+  if (time && everyMonth && everyWeekday) return `every month on ${dayList(daysOfMonth)} ${time}`;
+  if (time && everyWeekday && months.length === 1 && daysOfMonth.length === 1) {
+    return `every year on ${SHORT_MONTHS[months[0] - 1]} ${daysOfMonth[0]} ${time}`;
+  }
+  if (minutes.length === 1 && isFullRange(hours, 0, 23) && everyDay && everyMonth && everyWeekday) {
+    return `every hour at :${String(minutes[0]).padStart(2, "0")}`;
+  }
+  if (isFullRange(minutes, 0, 59) && isFullRange(hours, 0, 23) && everyDay && everyMonth && everyWeekday) {
+    return "every minute";
+  }
+  return `cron ${expr}`;
+}
+
 /** Where the next run lands, for the widget and dialogs. */
 export function describeSchedule(schedule: Schedule | string, now = Date.now()): string {
   const parsed = typeof schedule === "string" ? parseCanonical(schedule) : schedule;
   switch (parsed.kind) {
     case "cron":
-      return `cron ${parsed.expr}`;
+      return describeCron(parsed.expr);
     case "every":
       return parsed.label;
     case "at":
