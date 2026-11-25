@@ -41,7 +41,7 @@ npm view @zhoubiao188/pi-scheduled-tasks version --registry=https://registry.npm
 ## Verifying the workflow without publishing
 
 Actions → **Release** → **Run workflow** keeps `dry_run` on by default: it
-builds, tests and runs `npm publish --dry-run` without touching the registry.
+builds, tests and runs `npm pack --dry-run` without touching the registry.
 Turn `dry_run` off only when the trusted publisher is configured.
 
 ## If trusted publishing is unavailable

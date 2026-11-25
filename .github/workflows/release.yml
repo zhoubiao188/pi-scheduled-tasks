@@ -42,9 +42,11 @@ jobs:
             exit 1
           fi
 
-      - name: Publish (dry run)
+      # `npm publish --dry-run` still refuses a version that is already on the
+      # registry, so the manual run validates the tarball instead.
+      - name: Pack (dry run)
         if: github.event_name == 'workflow_dispatch' && inputs.dry_run
-        run: npm publish --dry-run
+        run: npm pack --dry-run
 
       - name: Publish
         if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run)
