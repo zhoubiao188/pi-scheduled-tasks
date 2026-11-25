@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.3
+
+- a fresh install is visible: with no tasks the status entry reads
+  `⏰ No tasks · /tasks` and the widget above the composer points at `/tasks`
+- the widget lists paused tasks too, not only the active ones
+- README: where to find the manager (Pi Web has no sidebar page for extensions)
+
 ## 0.2.2
 
 - the interval step accepts "every 30m" as well as "30m"

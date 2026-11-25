@@ -284,36 +284,32 @@ export default function scheduledTasks(pi: ExtensionAPI) {
     try {
       const { ctx } = host;
       const active = enabledTasks();
-      if (active.length === 0) {
-        if (lastStatus !== null) {
-          ctx.ui.setStatus("command:/tasks", undefined);
-          lastStatus = null;
-        }
-        if (lastWidget !== null) {
-          ctx.ui.setWidget("scheduled-tasks", undefined);
-          lastWidget = null;
-        }
-        return;
-      }
       const next = nextRunLabel();
-      const label = runningTaskId
-        ? `⏰ ${active.length} task${active.length === 1 ? "" : "s"} · running`
-        : `⏰ ${active.length} active${next ? ` · next ${next}` : ""}`;
-      // The `command:` prefix makes this a button in Pi Web that opens /tasks.
+      // A fresh install must be findable: with no tasks the entry still says
+      // what it is, and clicking it in Pi Web opens /tasks.
+      const label =
+        store.tasks.length === 0
+          ? "⏰ No tasks · /tasks"
+          : runningTaskId
+            ? `⏰ ${active.length} task${active.length === 1 ? "" : "s"} · running`
+            : `⏰ ${active.length} active${next ? ` · next ${next}` : ""}`;
       if (label !== lastStatus) {
         ctx.ui.setStatus("command:/tasks", label);
         lastStatus = label;
       }
 
-      const lines = active
-        .slice()
-        .sort((a, b) => (a.nextRunAt ?? Infinity) - (b.nextRunAt ?? Infinity))
-        .slice(0, WIDGET_LINES)
-        .map((task) => {
-          const when = task.nextRunAt ? ` · ${formatDateTime(task.nextRunAt)}` : "";
-          return `${stateMark(task)} ${task.id} ${truncate(task.title, 42)} — ${describeSchedule(task.schedule)}${when}`;
-        });
-      const hidden = active.length - lines.length;
+      const lines =
+        store.tasks.length === 0
+          ? ["⏰ No scheduled tasks · /tasks"]
+          : store.tasks
+              .slice()
+              .sort((a, b) => (a.nextRunAt ?? Infinity) - (b.nextRunAt ?? Infinity))
+              .slice(0, WIDGET_LINES)
+              .map((task) => {
+                const when = task.nextRunAt ? ` · ${formatDateTime(task.nextRunAt)}` : "";
+                return `${stateMark(task)} ${task.id} ${truncate(task.title, 42)} — ${describeSchedule(task.schedule)}${when}`;
+              });
+      const hidden = Math.max(0, store.tasks.length - lines.length);
       if (hidden > 0) lines.push(`+${hidden} more · /tasks`);
       const widget = lines.join("\n");
       if (widget !== lastWidget) {

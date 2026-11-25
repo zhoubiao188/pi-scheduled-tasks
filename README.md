@@ -73,6 +73,15 @@ Requirements: pi 0.84 or newer; Pi Web 0.9.0 or newer for the status-bar button 
 the liveness registry. Older Pi Web versions still work, but an idle session may
 be evicted, so runs wait until a session is open again. No runtime dependencies.
 
+## Where to find it
+
+There is no sidebar page: Pi Web has no slot an extension could add one to.
+Open any session, then either type `/tasks` in the composer (it completes like
+any slash command) or click the `⏰` entry in the status shelf above it.
+
+With no tasks yet, the shelf reads `⏰ No tasks · /tasks` and a line above the
+composer points at `/tasks`, so a fresh install is not invisible.
+
 ## Use
 
 `/tasks` opens the manager. Select a task to run it now, edit it, pause or

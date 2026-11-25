@@ -78,8 +78,11 @@ test("session_start registers the scheduler and leaves an empty UI", async () =>
 
   assert.ok(fs.existsSync(path.join(dir, "scheduled-tasks.lock")), "the first session becomes the leader");
   assert.deepEqual(readStore().tasks, []);
-  assert.deepEqual(record.widgets, [], "an empty scheduler writes nothing to the UI");
-  assert.deepEqual(record.statuses, []);
+  assert.deepEqual(record.widgets.at(-1), {
+    key: "scheduled-tasks",
+    lines: ["⏰ No scheduled tasks · /tasks"],
+  });
+  assert.deepEqual(record.statuses.at(-1), { key: "command:/tasks", text: "⏰ No tasks · /tasks" });
 });
 
 test("creating a task through the manager persists it", async () => {
