@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.2
+
+- the interval step accepts "every 30m" as well as "30m"
+- releases publish from GitHub Actions through npm Trusted Publishing
+
 ## 0.2.1
 
 Same code as 0.2.0. The 0.2.0 tarball was staged on npm but the staged

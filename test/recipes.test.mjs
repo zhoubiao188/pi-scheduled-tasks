@@ -13,6 +13,7 @@ test("repeat rules compile to canonical schedules", () => {
   assert.equal(buildSchedule("monthly", { days: "1-3", time: "08:05" }, now).canonical, "5 8 1,2,3 * *");
   assert.equal(buildSchedule("yearly", { date: "12-01", time: "09:00" }, now).canonical, "0 9 1 12 *");
   assert.equal(buildSchedule("interval", { interval: "30m" }, now).canonical, "every 30m");
+  assert.equal(buildSchedule("interval", { interval: "every 45m" }, now).canonical, "every 45m");
   assert.equal(buildSchedule("cron", { cron: "0 9 * * mon-fri" }, now).canonical, "0 9 * * mon-fri");
 });
 

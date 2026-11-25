@@ -117,10 +117,10 @@ export function buildSchedule(
       return parseSchedule(`${minutes} ${hours} ${day} ${month} *`, now);
     }
     case "interval": {
-      const raw = (input.interval ?? "").trim();
-      const text = /^\d/.test(raw) ? raw : "";
-      if (!text) throw new ScheduleError('Use an interval such as "30m" or "1h30m".');
-      return parseSchedule(`every ${text}`, now);
+      // People type "30m" and "every 30m" for the same thing.
+      const raw = (input.interval ?? "").trim().replace(/^every\s+/i, "");
+      if (!/^\d/.test(raw)) throw new ScheduleError('Use an interval such as "30m" or "1h30m".');
+      return parseSchedule(`every ${raw}`, now);
     }
     case "once":
       return parseSchedule(`at ${input.at ?? ""}`, now);
