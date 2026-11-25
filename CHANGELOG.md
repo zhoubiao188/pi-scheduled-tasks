@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1
+
+Same code as 0.2.0. The 0.2.0 tarball was staged on npm but the staged
+approval endpoint rejected every request, and a direct publish cannot overwrite
+a staged version, so this is npm's first published version.
+
 ## 0.2.0
 
 Built against the automation guide WorkBuddy publishes, for the parts a local pi
