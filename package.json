@@ -10,6 +10,12 @@
     "type": "git",
     "url": "git+https://github.com/zhoubiao188/pi-scheduled-tasks.git"
   },
+  "bugs": {
+    "url": "https://github.com/zhoubiao188/pi-scheduled-tasks/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "keywords": [
     "pi-package",
     "pi-extension",
