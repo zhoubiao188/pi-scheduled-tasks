@@ -1,5 +1,7 @@
 # pi-scheduled-tasks
 
+[![npm](https://img.shields.io/npm/v/@zhoubiao188/pi-scheduled-tasks.svg)](https://www.npmjs.com/package/@zhoubiao188/pi-scheduled-tasks)
+
 Scheduled tasks for [pi](https://github.com/earendil-works/pi) and
 [Pi Web](https://github.com/agegr/pi-web): cron expressions, intervals and
 one-off prompts, managed from a dialog-driven interface inside the session.
@@ -49,13 +51,19 @@ need reminders in the session you already have open, that package may be enough.
 ## Install
 
 ```bash
+pi install npm:@zhoubiao188/pi-scheduled-tasks
+```
+
+From a git checkout instead:
+
+```bash
 pi install git:github.com/zhoubiao188/pi-scheduled-tasks
 ```
 
-Or try it without installing:
+To try it without installing:
 
 ```bash
-pi -e git:github.com/zhoubiao188/pi-scheduled-tasks
+pi -e npm:@zhoubiao188/pi-scheduled-tasks
 ```
 
 Restart Pi Web after installing, or run `/reload` in a session. In Pi Web the

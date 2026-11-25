@@ -1,5 +1,7 @@
 # pi-scheduled-tasks
 
+[![npm](https://img.shields.io/npm/v/@zhoubiao188/pi-scheduled-tasks.svg)](https://www.npmjs.com/package/@zhoubiao188/pi-scheduled-tasks)
+
 为 [pi](https://github.com/earendil-works/pi) 和 [Pi Web](https://github.com/agegr/pi-web)
 提供定时任务：cron 表达式、固定间隔、一次性提醒，都在会话里用对话框管理。
 
@@ -44,13 +46,19 @@ npm 上的 `pi-scheduled-tasks`（作者 errfld）也提供定时提示词：它
 ## 安装
 
 ```bash
+pi install npm:@zhoubiao188/pi-scheduled-tasks
+```
+
+也可以从 git 安装：
+
+```bash
 pi install git:github.com/zhoubiao188/pi-scheduled-tasks
 ```
 
 不安装、先试用：
 
 ```bash
-pi -e git:github.com/zhoubiao188/pi-scheduled-tasks
+pi -e npm:@zhoubiao188/pi-scheduled-tasks
 ```
 
 安装后重启 Pi Web，或在会话里执行 `/reload`。在 Pi Web 输入框里输入 `/` 就能补全
